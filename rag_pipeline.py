@@ -49,18 +49,7 @@ def create_vector_store(documents, embeddings):
         documents=documents,
         embedding=embeddings
     )
-    vector_store.save_local("faiss_index")
-    print("✅ Stage 4: Vector store created and saved")
-    return vector_store
-
-
-def load_vector_store(embeddings):
-    """Stage 4 - Load existing FAISS index from disk"""
-    vector_store = FAISS.load_local(
-        "faiss_index",
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+    print("✅ Stage 4: Vector store created (in memory)")
     return vector_store
 
 

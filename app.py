@@ -113,9 +113,6 @@ with st.sidebar:
             st.session_state.qa_chain = None
             st.session_state.chunk_count = 0
             st.session_state.char_count = 0
-            if os.path.exists("faiss_index"):
-                import shutil
-                shutil.rmtree("faiss_index")
             st.rerun()
 
     st.divider()
