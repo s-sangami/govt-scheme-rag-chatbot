@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import logging
 from deep_translator import GoogleTranslator
 from langdetect import detect
 from rag_pipeline import (
@@ -10,35 +11,42 @@ from rag_pipeline import (
     create_qa_chain
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ── Translation Functions ────────────────────────────────
 def translate_to_english(text):
+    """Returns (english_text, detected_lang, ok). On failure returns the
+    original text as English with ok=False."""
     try:
         if len(text.strip()) < 10:
-            return text, "en"
+            return text, "en", True
         detected_lang = detect(text)
         if detected_lang == "en":
-            return text, "en"
+            return text, "en", True
         translated = GoogleTranslator(
             source="auto",
             target="en"
         ).translate(text)
-        return translated, detected_lang
-    except:
-        return text, "en"
+        return translated, detected_lang, True
+    except Exception:
+        logger.exception("Translation to English failed")
+        return text, "en", False
 
 
 def translate_from_english(text, target_lang):
+    """Returns (translated_text, ok). On failure returns the English text."""
     try:
         if target_lang == "en":
-            return text
+            return text, True
         translated = GoogleTranslator(
             source="en",
             target=target_lang
         ).translate(text)
-        return translated
-    except:
-        return text
+        return translated, True
+    except Exception:
+        logger.exception("Translation from English to %s failed", target_lang)
+        return text, False
 
 
 # ── Page Config ──────────────────────────────────────────
@@ -166,7 +174,7 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Searching document..."):
 
-                english_question, detected_lang = translate_to_english(
+                english_question, detected_lang, in_ok = translate_to_english(
                     user_question
                 )
 
@@ -189,9 +197,14 @@ else:
                 )
                 english_answer = result["result"]
 
-                final_answer = translate_from_english(
+                final_answer, out_ok = translate_from_english(
                     english_answer, detected_lang
                 )
+
+            if not in_ok:
+                st.caption("⚠️ Could not translate your question; it was searched as written.")
+            if not out_ok:
+                st.caption("⚠️ Could not translate the answer back; showing it in English.")
 
             st.markdown(final_answer)
 
