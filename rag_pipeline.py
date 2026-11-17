@@ -9,38 +9,28 @@ from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 
-def extract_text_from_pdf(pdf_path):
-    """Extract all text from a single PDF file"""
+def extract_pages_from_pdf(pdf_path):
+    """Extract text page by page. Returns a list of (page_number, text), 1-based."""
     doc = fitz.open(pdf_path)
-    full_text = ""
-    for page in doc:
-        full_text += page.get_text()
+    pages = [(i + 1, page.get_text()) for i, page in enumerate(doc)]
     doc.close()
-    return full_text
+    return pages
 
 
-def extract_text_from_multiple_pdfs(pdf_folder):
-    """Stage 1 - Extract text from ALL PDFs in a folder"""
-    combined_text = ""
-    pdf_files = [f for f in os.listdir(pdf_folder) if f.endswith('.pdf')]
-
-    for pdf_file in pdf_files:
-        pdf_path = os.path.join(pdf_folder, pdf_file)
-        print(f"   Reading: {pdf_file}")
-        combined_text += extract_text_from_pdf(pdf_path)
-
-    return combined_text
-
-
-def split_text_into_chunks(text):
-    """Stage 2 - Split text into smaller chunks"""
+def split_pages_into_documents(pages, source=None):
+    """Stage 2 - Split each page into chunks, keeping the page number as metadata"""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
         chunk_overlap=100,
         separators=["\n\n", "\n", ".", " "]
     )
-    chunks = splitter.split_text(text)
-    return chunks
+    documents = []
+    for page_number, text in pages:
+        metadata = {"page": page_number}
+        if source:
+            metadata["source"] = source
+        documents.extend(splitter.create_documents([text], metadatas=[metadata]))
+    return documents
 
 
 def load_embedding_model():
@@ -52,11 +42,11 @@ def load_embedding_model():
     return embeddings
 
 
-def create_vector_store(chunks, embeddings):
-    """Stage 4 - Convert chunks to vectors and store in FAISS"""
-    print(f"⏳ Embedding {len(chunks)} chunks into FAISS...")
-    vector_store = FAISS.from_texts(
-        texts=chunks,
+def create_vector_store(documents, embeddings):
+    """Stage 4 - Convert chunk documents to vectors and store in FAISS"""
+    print(f"⏳ Embedding {len(documents)} chunks into FAISS...")
+    vector_store = FAISS.from_documents(
+        documents=documents,
         embedding=embeddings
     )
     vector_store.save_local("faiss_index")
@@ -110,6 +100,7 @@ def create_qa_chain(vector_store):
         llm=llm,
         chain_type="stuff",
         retriever=retriever,
+        return_source_documents=True,
         chain_type_kwargs={"prompt": prompt}
     )
 
@@ -118,33 +109,28 @@ def create_qa_chain(vector_store):
 
 if __name__ == "__main__":
 
-    # Stage 1 - Extract from all PDFs in folder
+    # Stage 1 - Extract pages from every PDF in the folder
     print("⏳ Extracting text from all PDFs...")
-    text = extract_text_from_multiple_pdfs("sample_pdfs")
-    print(f"✅ Stage 1: Extracted {len(text)} characters from all PDFs")
-
-    # Stage 2
-    chunks = split_text_into_chunks(text)
-    print(f"✅ Stage 2: Created {len(chunks)} chunks")
+    documents = []
+    for name in sorted(os.listdir("sample_pdfs")):
+        if name.lower().endswith(".pdf"):
+            pages = extract_pages_from_pdf(os.path.join("sample_pdfs", name))
+            documents.extend(split_pages_into_documents(pages, source=name))
+    print(f"✅ Stages 1-2: Created {len(documents)} chunks")
 
     # Stage 3
     print("\n⏳ Loading embedding model...")
     embeddings = load_embedding_model()
-    print(f"✅ Stage 3: Embedding model loaded")
+    print("✅ Stage 3: Embedding model loaded")
 
-    # Stage 4
-    if os.path.exists("faiss_index"):
-        print("✅ Stage 4: Loading existing vector store...")
-        vector_store = load_vector_store(embeddings)
-    else:
-        vector_store = create_vector_store(chunks, embeddings)
+    # Stage 4 (in memory only)
+    vector_store = create_vector_store(documents, embeddings)
 
     # Stage 5
     print("\n⏳ Setting up QA chain...")
     qa_chain = create_qa_chain(vector_store)
     print("✅ Stage 5: QA chain ready\n")
 
-    # Test questions
     questions = [
         "Who is eligible for PM Kisan scheme?",
         "What is the benefit amount under PM Kisan?",
@@ -155,4 +141,6 @@ if __name__ == "__main__":
         print(f"Question: {question}")
         result = qa_chain.invoke({"query": question})
         print(f"Answer: {result['result']}")
+        pages = sorted({d.metadata["page"] for d in result["source_documents"]})
+        print(f"Sources: page {', '.join(map(str, pages))}")
         print("---")
