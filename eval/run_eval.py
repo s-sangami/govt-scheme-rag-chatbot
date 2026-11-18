@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -49,6 +50,17 @@ def check_facts(answer, expected_facts):
     return missing
 
 
+def invoke_with_retry(chain, question, attempts=5):
+    """Retry on rate limits (HTTP 429) so API throttling is not scored as a failure."""
+    for attempt in range(attempts):
+        try:
+            return chain.invoke({"query": question})
+        except Exception as e:
+            if "429" not in str(e) or attempt == attempts - 1:
+                raise
+            time.sleep(15 * (attempt + 1))
+
+
 def main():
     if not os.getenv("GROQ_API_KEY"):
         sys.exit("GROQ_API_KEY is not set (put it in .env or the environment).")
@@ -64,7 +76,7 @@ def main():
     rows = []
     for q in questions:
         try:
-            result = chain.invoke({"query": q["question"]})
+            result = invoke_with_retry(chain, q["question"])
             answer = result["result"]
             pages_used = sorted({d.metadata["page"] for d in result["source_documents"]})
             missing = check_facts(answer, q["expected_facts"])
