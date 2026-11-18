@@ -14,7 +14,7 @@ Millions of Indians are unaware of government welfare schemes they qualify for. 
 
 - 📄 Upload one text-based scheme PDF at a time (uploading a new one resets the session)
 - 🌐 Ask questions in 6 languages — English, Hindi, Tamil, Telugu, Kannada, Malayalam
-- 🎯 Answers are generated from the 5 most similar chunks of the uploaded PDF; the prompt tells the model to answer only from that context and to say so when the answer is not there
+- 🎯 Answers are generated from the 8 most similar chunks of the uploaded PDF; the prompt tells the model to answer only from that context and to say so when the answer is not there
 - 📑 Each answer shows the PDF pages its chunks came from ("Sources: page 2, 10")
 - ⚡ In-memory FAISS vector search; the index lives only in your Streamlit session and is not written to disk
 - 🧪 A small evaluation script (`eval/run_eval.py`) with 10 PM-KISAN questions
@@ -29,7 +29,7 @@ The prompt reduces, but does not eliminate, wrong or made-up answers. Small LLMs
 - **English-only embeddings, translation in and out.** The embedding model (`all-MiniLM-L6-v2`) is English-only. Non-English questions are detected with `langdetect`, translated to English with Google Translate (via `deep-translator`, needs internet), answered, and translated back. If translation fails, the app shows a notice and falls back to the original/English text. Retrieval and answers are only as good as the translation, and the PDF itself should be in English.
 - **Chat history is shown but not used as context.** Earlier messages are displayed in the UI, but every question is answered independently; follow-ups like "and what about the second one?" will not work.
 - **One document per session.** There is no multi-PDF upload or switching between PDFs.
-- **Retrieval is simple.** Fixed 500-character chunks, top 5 results, no re-ranking, so answers that depend on content spread across many pages can be incomplete.
+- **Retrieval is simple.** Fixed 800-character chunks (150 overlap), top 8 results, no re-ranking, so answers that depend on content spread across many pages can be incomplete.
 - **Needs a Groq API key** and internet access (LLM and translation are remote calls).
 
 ---
@@ -53,7 +53,7 @@ Translate to English (Deep Translator)
     ↓
 Semantic Search in FAISS
     ↓
-Top 5 Relevant Chunks Retrieved
+Top 8 Relevant Chunks Retrieved
     ↓
 gpt-oss-20b Generates Answer from those chunks
     ↓
