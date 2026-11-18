@@ -1,44 +1,52 @@
 import streamlit as st
 import os
+import logging
 from deep_translator import GoogleTranslator
 from langdetect import detect
 from rag_pipeline import (
-    extract_text_from_pdf,
-    split_text_into_chunks,
+    extract_pages_from_pdf,
+    split_pages_into_documents,
     load_embedding_model,
     create_vector_store,
     create_qa_chain
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ── Translation Functions ────────────────────────────────
 def translate_to_english(text):
+    """Returns (english_text, detected_lang, ok). On failure returns the
+    original text as English with ok=False."""
     try:
         if len(text.strip()) < 10:
-            return text, "en"
+            return text, "en", True
         detected_lang = detect(text)
         if detected_lang == "en":
-            return text, "en"
+            return text, "en", True
         translated = GoogleTranslator(
             source="auto",
             target="en"
         ).translate(text)
-        return translated, detected_lang
-    except:
-        return text, "en"
+        return translated, detected_lang, True
+    except Exception:
+        logger.exception("Translation to English failed")
+        return text, "en", False
 
 
 def translate_from_english(text, target_lang):
+    """Returns (translated_text, ok). On failure returns the English text."""
     try:
         if target_lang == "en":
-            return text
+            return text, True
         translated = GoogleTranslator(
             source="en",
             target=target_lang
         ).translate(text)
-        return translated
-    except:
-        return text
+        return translated, True
+    except Exception:
+        logger.exception("Translation from English to %s failed", target_lang)
+        return text, False
 
 
 # ── Page Config ──────────────────────────────────────────
@@ -93,13 +101,13 @@ with st.sidebar:
                 with open(temp_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
 
-                text = extract_text_from_pdf(temp_path)
-                chunks = split_text_into_chunks(text)
+                pages = extract_pages_from_pdf(temp_path)
+                chunks = split_pages_into_documents(pages, source=uploaded_file.name)
                 vector_store = create_vector_store(chunks, embeddings)
                 st.session_state.qa_chain = create_qa_chain(vector_store)
                 st.session_state.pdf_processed = True
                 st.session_state.chunk_count = len(chunks)
-                st.session_state.char_count = len(text)
+                st.session_state.char_count = sum(len(t) for _, t in pages)
 
                 os.remove(temp_path)
 
@@ -113,9 +121,6 @@ with st.sidebar:
             st.session_state.qa_chain = None
             st.session_state.chunk_count = 0
             st.session_state.char_count = 0
-            if os.path.exists("faiss_index"):
-                import shutil
-                shutil.rmtree("faiss_index")
             st.rerun()
 
     st.divider()
@@ -151,6 +156,8 @@ else:
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            if message.get("sources"):
+                st.caption(message["sources"])
 
     user_question = st.chat_input("Ask a question in any language...")
 
@@ -167,7 +174,7 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Searching document..."):
 
-                english_question, detected_lang = translate_to_english(
+                english_question, detected_lang, in_ok = translate_to_english(
                     user_question
                 )
 
@@ -190,13 +197,29 @@ else:
                 )
                 english_answer = result["result"]
 
-                final_answer = translate_from_english(
+                final_answer, out_ok = translate_from_english(
                     english_answer, detected_lang
                 )
 
+            if not in_ok:
+                st.caption("⚠️ Could not translate your question; it was searched as written.")
+            if not out_ok:
+                st.caption("⚠️ Could not translate the answer back; showing it in English.")
+
             st.markdown(final_answer)
+
+            pages_used = sorted({
+                doc.metadata["page"] for doc in result["source_documents"]
+            })
+            sources_text = (
+                "Sources: page " + ", ".join(str(p) for p in pages_used)
+                if pages_used else ""
+            )
+            if sources_text:
+                st.caption(sources_text)
 
         st.session_state.chat_history.append({
             "role": "assistant",
-            "content": final_answer
+            "content": final_answer,
+            "sources": sources_text
         })
