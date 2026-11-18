@@ -20,8 +20,8 @@ def extract_pages_from_pdf(pdf_path):
 def split_pages_into_documents(pages, source=None):
     """Stage 2 - Split each page into chunks, keeping the page number as metadata"""
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100,
+        chunk_size=800,
+        chunk_overlap=150,
         separators=["\n\n", "\n", ".", " "]
     )
     documents = []
