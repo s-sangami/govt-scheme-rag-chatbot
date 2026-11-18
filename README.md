@@ -55,7 +55,7 @@ Semantic Search in FAISS
     ↓
 Top 5 Relevant Chunks Retrieved
     ↓
-Llama 3.1 Generates Answer from those chunks
+gpt-oss-20b Generates Answer from those chunks
     ↓
 Translate Answer Back to User Language
     ↓
@@ -72,7 +72,7 @@ Answer + "Sources: page X, Y" Displayed
 | Text Chunking | LangChain RecursiveCharacterTextSplitter | Split text into 500-char chunks |
 | Embeddings | Sentence Transformers (all-MiniLM-L6-v2) | Convert text to 384-dim vectors |
 | Vector Store | FAISS | In-memory vector search |
-| LLM | Llama 3.1 via Groq API | Generate final answers |
+| LLM | openai/gpt-oss-20b via Groq API | Generate final answers |
 | Translation | Deep Translator + LangDetect | Multilingual support |
 | UI | Streamlit | Web interface |
 | Language | Python 3.11 | Core language |
@@ -123,7 +123,11 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 ```
 GROQ_API_KEY=your_groq_api_key_here
+# optional: override the model (default: openai/gpt-oss-20b)
+# GROQ_MODEL=openai/gpt-oss-20b
 ```
+
+The Groq model name can be changed through the `GROQ_MODEL` environment variable; if unset, `openai/gpt-oss-20b` is used.
 
 Get your free API key at: https://console.groq.com
 
