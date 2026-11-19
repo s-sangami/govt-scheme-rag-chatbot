@@ -53,6 +53,14 @@ def create_vector_store(documents, embeddings):
     return vector_store
 
 
+REFUSAL_TEXT = "I could not find this information in the document."
+
+
+def is_refusal(answer):
+    """True if the answer is the standard 'not in the document' refusal."""
+    return REFUSAL_TEXT.lower().rstrip(".") in answer.lower()
+
+
 def create_qa_chain(vector_store):
     """Stage 5 - Create the RAG question-answering chain"""
     load_dotenv()

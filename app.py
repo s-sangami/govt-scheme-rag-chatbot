@@ -8,7 +8,8 @@ from rag_pipeline import (
     split_pages_into_documents,
     load_embedding_model,
     create_vector_store,
-    create_qa_chain
+    create_qa_chain,
+    is_refusal
 )
 
 logger = logging.getLogger(__name__)
@@ -208,7 +209,7 @@ else:
 
             st.markdown(final_answer)
 
-            pages_used = sorted({
+            pages_used = [] if is_refusal(english_answer) else sorted({
                 doc.metadata["page"] for doc in result["source_documents"]
             })
             sources_text = (
