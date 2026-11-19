@@ -61,13 +61,27 @@ def is_refusal(answer):
     return REFUSAL_TEXT.lower().rstrip(".") in answer.lower()
 
 
+class RetryOnEmptyChatGroq(ChatGroq):
+    """ChatGroq that makes one extra call when the model returns empty content."""
+
+    def _generate(self, messages, *args, **kwargs):
+        result = super()._generate(messages, *args, **kwargs)
+        if not any((g.message.content or "").strip() for g in result.generations):
+            result = super()._generate(messages, *args, **kwargs)
+        return result
+
+
 def create_qa_chain(vector_store):
     """Stage 5 - Create the RAG question-answering chain"""
     load_dotenv()
 
-    llm = ChatGroq(
+    # gpt-oss is a reasoning model: reasoning tokens count against the completion
+    # limit (default 2048 on Groq). Keep reasoning short and leave room for the answer.
+    llm = RetryOnEmptyChatGroq(
         model_name=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         temperature=0,
+        reasoning_effort="low",
+        max_tokens=4096,
         api_key=os.getenv("GROQ_API_KEY")
     )
 
