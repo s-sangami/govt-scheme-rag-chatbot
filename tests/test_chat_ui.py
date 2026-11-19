@@ -53,3 +53,20 @@ def test_empty_model_answer_shows_message_and_no_sources():
     last = at.session_state["chat_history"][-1]
     assert last["content"].strip() != ""
     assert last["sources"] == ""
+
+
+def test_translator_returning_none_falls_back_to_english_answer():
+    from unittest import mock
+    with mock.patch("deep_translator.GoogleTranslator.translate", return_value=None):
+        at = AppTest.from_file("app.py", default_timeout=120)
+        at.session_state["pdf_processed"] = True
+        at.session_state["chat_history"] = []
+        at.session_state["qa_chain"] = FakeChain(ANSWER)
+        at.session_state["chunk_count"] = 1
+        at.session_state["char_count"] = 1
+        at.run()
+        at.chat_input[0].set_value("किसानों को प्रति वर्ष कितना पैसा मिलता है?").run()
+    last = at.session_state["chat_history"][-1]
+    assert last["content"] == ANSWER
+    assert last["sources"] == "Sources: page 2, 3"
+    assert ANSWER in [m.value for m in at.markdown]

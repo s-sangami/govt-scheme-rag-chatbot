@@ -31,6 +31,8 @@ def translate_to_english(text):
             source="auto",
             target="en"
         ).translate(text)
+        if not translated or not translated.strip():
+            raise ValueError("empty translation")
         return translated, detected_lang, True
     except Exception:
         logger.exception("Translation to English failed")
@@ -46,6 +48,8 @@ def translate_from_english(text, target_lang):
             source="en",
             target=target_lang
         ).translate(text)
+        if not translated or not translated.strip():
+            raise ValueError("empty translation")
         return translated, True
     except Exception:
         logger.exception("Translation from English to %s failed", target_lang)
