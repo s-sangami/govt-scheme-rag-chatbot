@@ -14,6 +14,8 @@ from rag_pipeline import (
 
 logger = logging.getLogger(__name__)
 
+EMPTY_ANSWER_TEXT = "The model returned an empty answer. Please try asking again."
+
 
 # ── Translation Functions ────────────────────────────────
 def translate_to_english(text):
@@ -196,7 +198,9 @@ else:
                 result = st.session_state.qa_chain.invoke(
                     {"query": english_question}
                 )
-                english_answer = result["result"]
+                english_answer = (result["result"] or "").strip()
+                if not english_answer:
+                    english_answer = EMPTY_ANSWER_TEXT
 
                 final_answer, out_ok = translate_from_english(
                     english_answer, detected_lang
@@ -209,7 +213,7 @@ else:
 
             st.markdown(final_answer)
 
-            pages_used = [] if is_refusal(english_answer) else sorted({
+            pages_used = [] if (english_answer == EMPTY_ANSWER_TEXT or is_refusal(english_answer)) else sorted({
                 doc.metadata["page"] for doc in result["source_documents"]
             })
             sources_text = (
