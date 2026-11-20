@@ -1,8 +1,7 @@
 import streamlit as st
 import os
 import logging
-from deep_translator import GoogleTranslator
-from langdetect import detect
+from translation import translate_to_english, translate_from_english
 from rag_pipeline import (
     extract_pages_from_pdf,
     split_pages_into_documents,
@@ -15,45 +14,10 @@ from rag_pipeline import (
 logger = logging.getLogger(__name__)
 
 EMPTY_ANSWER_TEXT = "The model returned an empty answer. Please try asking again."
-
-
-# ── Translation Functions ────────────────────────────────
-def translate_to_english(text):
-    """Returns (english_text, detected_lang, ok). On failure returns the
-    original text as English with ok=False."""
-    try:
-        if len(text.strip()) < 10:
-            return text, "en", True
-        detected_lang = detect(text)
-        if detected_lang == "en":
-            return text, "en", True
-        translated = GoogleTranslator(
-            source="auto",
-            target="en"
-        ).translate(text)
-        if not translated or not translated.strip():
-            raise ValueError("empty translation")
-        return translated, detected_lang, True
-    except Exception:
-        logger.exception("Translation to English failed")
-        return text, "en", False
-
-
-def translate_from_english(text, target_lang):
-    """Returns (translated_text, ok). On failure returns the English text."""
-    try:
-        if target_lang == "en":
-            return text, True
-        translated = GoogleTranslator(
-            source="en",
-            target=target_lang
-        ).translate(text)
-        if not translated or not translated.strip():
-            raise ValueError("empty translation")
-        return translated, True
-    except Exception:
-        logger.exception("Translation from English to %s failed", target_lang)
-        return text, False
+TRANSLATION_DOWN_TEXT = (
+    "The translation service is unavailable right now, so your question could not "
+    "be translated. Please try again in a minute, or ask in English."
+)
 
 
 # ── Page Config ──────────────────────────────────────────
@@ -193,6 +157,14 @@ else:
                     "kn": "Kannada",
                     "ml": "Malayalam"
                 }
+
+                if not in_ok and detected_lang != "en":
+                    msg = TRANSLATION_DOWN_TEXT
+                    st.error(msg)
+                    st.session_state.chat_history.append({
+                        "role": "assistant", "content": msg, "sources": ""
+                    })
+                    st.stop()
 
                 if detected_lang != "en":
                     st.caption(

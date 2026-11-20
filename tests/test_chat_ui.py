@@ -55,9 +55,9 @@ def test_empty_model_answer_shows_message_and_no_sources():
     assert last["sources"] == ""
 
 
-def test_translator_returning_none_falls_back_to_english_answer():
+def test_translator_failure_shows_clear_message_and_does_not_search():
     from unittest import mock
-    with mock.patch("deep_translator.GoogleTranslator.translate", return_value=None):
+    with mock.patch("translation.DEFAULT_BACKENDS", (lambda *a: None, lambda *a: None)),          mock.patch("translation.time.sleep"):
         at = AppTest.from_file("app.py", default_timeout=120)
         at.session_state["pdf_processed"] = True
         at.session_state["chat_history"] = []
@@ -66,7 +66,8 @@ def test_translator_returning_none_falls_back_to_english_answer():
         at.session_state["char_count"] = 1
         at.run()
         at.chat_input[0].set_value("किसानों को प्रति वर्ष कितना पैसा मिलता है?").run()
+    assert not at.exception
+    assert "translation service is unavailable" in at.error[0].value
     last = at.session_state["chat_history"][-1]
-    assert last["content"] == ANSWER
-    assert last["sources"] == "Sources: page 2, 3"
-    assert ANSWER in [m.value for m in at.markdown]
+    assert "translation service is unavailable" in last["content"]
+    assert last["sources"] == ""
