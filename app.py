@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import logging
+import groq
 from deep_translator import GoogleTranslator
 from langdetect import detect
 from rag_pipeline import (
@@ -15,6 +16,27 @@ from rag_pipeline import (
 logger = logging.getLogger(__name__)
 
 EMPTY_ANSWER_TEXT = "The model returned an empty answer. Please try asking again."
+TOO_LARGE_TEXT = "Your question needs too much context, try a shorter question."
+RATE_LIMIT_TEXT = "Daily limit reached, try again later."
+GENERIC_ERROR_TEXT = "Something went wrong while contacting the model. Please try again."
+
+
+def friendly_error_message(exc):
+    """Map a Groq API error to a short user-facing message (no traceback)."""
+    if isinstance(exc, groq.RateLimitError) or getattr(exc, "status_code", None) == 429:
+        return RATE_LIMIT_TEXT
+    if getattr(exc, "status_code", None) == 413:
+        return TOO_LARGE_TEXT
+    return GENERIC_ERROR_TEXT
+
+
+def ask_chain(qa_chain, question):
+    """Returns (result, error_message). Exactly one of them is None."""
+    try:
+        return qa_chain.invoke({"query": question}), None
+    except (groq.RateLimitError, groq.APIStatusError) as exc:
+        logger.warning("Groq API error %s: %s", getattr(exc, "status_code", "?"), exc)
+        return None, friendly_error_message(exc)
 
 
 # ── Translation Functions ────────────────────────────────
@@ -199,9 +221,17 @@ else:
                         f"🌐 Detected: {lang_names.get(detected_lang, detected_lang)} → Searching in English"
                     )
 
-                result = st.session_state.qa_chain.invoke(
-                    {"query": english_question}
+                result, error_message = ask_chain(
+                    st.session_state.qa_chain, english_question
                 )
+                if error_message:
+                    st.error(error_message)
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": error_message,
+                        "sources": ""
+                    })
+                    st.stop()
                 english_answer = (result["result"] or "").strip()
                 if not english_answer:
                     english_answer = EMPTY_ANSWER_TEXT
