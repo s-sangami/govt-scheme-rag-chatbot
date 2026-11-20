@@ -20,8 +20,8 @@ def extract_pages_from_pdf(pdf_path):
 def split_pages_into_documents(pages, source=None):
     """Stage 2 - Split each page into chunks, keeping the page number as metadata"""
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=150,
+        chunk_size=500,
+        chunk_overlap=100,
         separators=["\n\n", "\n", ".", " "]
     )
     documents = []
@@ -81,6 +81,7 @@ def create_qa_chain(vector_store):
         model_name=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         temperature=0,
         reasoning_effort="low",
+        # Groq's 8,000 TPM limit counts input + max_tokens: ~1.5k input + 4096 stays under it.
         max_tokens=4096,
         api_key=os.getenv("GROQ_API_KEY")
     )
@@ -104,7 +105,7 @@ def create_qa_chain(vector_store):
     )
 
     retriever = vector_store.as_retriever(
-        search_kwargs={"k": 8}
+        search_kwargs={"k": 4}
     )
 
     qa_chain = RetrievalQA.from_chain_type(
