@@ -81,3 +81,92 @@ def test_detected_language_is_passed_as_source_not_auto():
 
     tr.translate_to_english(TAMIL, backends=(spy,))
     assert seen == [("ta", "en")]
+
+
+# ---- chunked, structure-preserving answer translation ----
+
+TABLE = (
+    "**Eligibility criteria**\n"
+    "| Criterion | Details |\n"
+    "|-----------|---------|\n"
+    "| **Land status** | Name in land records.<br>Cut-off 1 Feb 2019. |\n"
+    "- Farmers only\n"
+    "1. Apply online"
+)
+
+
+class Upper:
+    """Fake translator: upper-cases and records every request."""
+
+    def __init__(self):
+        self.seen = []
+
+    def __call__(self, text, source, target):
+        self.seen.append(text)
+        return text.upper()
+
+
+def run(text, *backends):
+    return tr.translate_from_english(text, "hi", backends=backends or (Upper(),), chunk_delay=0)
+
+
+def test_table_structure_is_preserved():
+    out, ok = run(TABLE)
+    assert ok
+    assert out == (
+        "**ELIGIBILITY CRITERIA**\n"
+        "| CRITERION | DETAILS |\n"
+        "|-----------|---------|\n"
+        "| **LAND STATUS** | NAME IN LAND RECORDS.<br>CUT-OFF 1 FEB 2019. |\n"
+        "- FARMERS ONLY\n"
+        "1. APPLY ONLINE"
+    )
+
+
+def test_long_answer_is_split_into_chunks_under_400():
+    fake = Upper()
+    sentence = "Farmers with land can apply for the scheme. "
+    answer = (sentence * 30).strip() + "\n\n" + (sentence * 20).strip()
+    out, ok = tr.translate_from_english(answer, "hi", backends=(fake,), chunk_delay=0)
+    assert ok and len(fake.seen) > 3
+    assert all(len(c) <= 400 for c in fake.seen)
+    assert all(c.endswith(".") for c in fake.seen)  # never mid-sentence
+    assert out.count("\n\n") == 1 and out == out.upper()
+
+
+def test_one_failing_chunk_stays_english_others_translated():
+    def picky(text, source, target):
+        if "Cut-off" in text:
+            raise TooManyRequests()
+        return text.upper()
+
+    out, ok = run(TABLE, picky)
+    assert ok is False
+    assert "CUT-OFF" not in out and "Cut-off 1 Feb 2019." in out
+    assert "NAME IN LAND RECORDS." in out and "| **LAND STATUS** |" in out
+
+
+def test_both_services_failing_returns_english_and_not_ok():
+    assert run(TABLE, rate_limited, rate_limited) == (TABLE, False)
+
+
+def test_short_answer_is_one_plain_request():
+    fake = Upper()
+    assert tr.translate_from_english("Rs. 6,000 per year", "hi", backends=(fake,)) == ("RS. 6,000 PER YEAR", True)
+    assert fake.seen == ["Rs. 6,000 per year"]
+
+
+def test_each_chunk_retries_then_uses_second_service():
+    calls = {"a": 0, "b": 0}
+
+    def a(text, s, t):
+        calls["a"] += 1
+        raise TooManyRequests()
+
+    def b(text, s, t):
+        calls["b"] += 1
+        return "X"
+
+    out, ok = run("Apply online.\nPay later.", a, b)
+    assert ok and out == "X\nX"
+    assert calls == {"a": 4, "b": 2}  # 2 tries on the first service per chunk, then the fallback
